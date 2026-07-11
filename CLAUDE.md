@@ -4,6 +4,11 @@ Monorepo of independent quantitative research projects. Each top-level directory
 
 `README.md` is the index into the projects.
 
+## Code style
+- Type-hint function signatures (params + return).
+- Docstrings explain the *why* / anything non-obvious — don't restate the signature.
+- Functions returning a DataFrame list their columns in the docstring (a signature can't show them).
+
 ## Commits
 - Conventional commits with the project dir as scope: `type(vol-surface): summary`. Repo-wide changes drop the scope (`chore: ...`).
 - Types: feat / fix / refactor / docs / test / perf / chore.
