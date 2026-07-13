@@ -90,16 +90,20 @@ def download_chain() -> pathlib.Path:
 def load_chain(date: str | None = None) -> dict:
     """Load a frozen snapshot's raw chain dict from disk (symmetric with fetch_chain).
 
-    Newest snapshot by default; if data/ is empty, downloads and freezes one
-    automatically (network hit once, then offline). Pass date='YYYY-MM-DD' to
-    pin a specific snapshot — raises FileNotFoundError if that one is missing.
-    Feed the result to ``chain_to_frame``.
+    Reads only from disk — never fetches. Newest snapshot by default; pass
+    date='YYYY-MM-DD' to pin one. Raises FileNotFoundError if the data dir is empty
+    (run download_chain() to fetch one) or the requested date isn't on disk
+    (download_chain only captures the current day, so a past date must already be
+    saved). Feed the result to ``chain_to_frame``.
     """
     if date:
         p = _DATA_DIR / f"spx_{date}.json"
         if not p.exists():
-            raise FileNotFoundError(f"no snapshot {p} — check the date or run download_chain()")
+            have = [q.stem.removeprefix("spx_") for q in sorted(_DATA_DIR.glob("spx_*.json"))]
+            raise FileNotFoundError(f"no snapshot for {date} in {_DATA_DIR}; on disk: {have or 'none'}")
     else:
         snapshots = sorted(_DATA_DIR.glob("spx_*.json"))
-        p = snapshots[-1] if snapshots else download_chain()
+        if not snapshots:
+            raise FileNotFoundError(f"no snapshots in {_DATA_DIR} — run download_chain()")
+        p = snapshots[-1]
     return json.loads(p.read_text())

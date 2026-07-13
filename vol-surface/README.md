@@ -17,16 +17,19 @@ The editable install (`-e .`) links the `engine` package into the venv, so you
 can `import engine.data` from anywhere without path hacks. Then, in Python:
 
 ```python
-from engine.data import load_chain, chain_to_frame
+from engine.data import download_chain, load_chain, chain_to_frame
 
-df = chain_to_frame(load_chain())   # newest SPX snapshot, as a tidy DataFrame
+download_chain()                    # fetch a snapshot into data/ (run once)
+df = chain_to_frame(load_chain())   # read newest snapshot back, as a tidy DataFrame
 ```
 
 ## Data
 
 `engine/data.py` pulls the SPX option chain from CBOE's free delayed-quotes feed.
-`load_chain()` reuses the newest frozen snapshot under `data/`, downloading one
-(e.g. `data/spx_2026-07-11.json`) if the folder is empty.
+`download_chain()` fetches and freezes a dated snapshot (e.g.
+`data/spx_2026-07-11.json`); `load_chain()` then reads the newest one back (or pass
+a date). `load_chain` never fetches — it raises `FileNotFoundError` if `data/` is
+empty, so run `download_chain()` once first.
 
 `data/` is gitignored on purpose. CBOE's [terms](https://www.cboe.com/terms/)
 license the delayed data for personal, non-commercial use only and prohibit
