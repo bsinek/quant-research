@@ -17,7 +17,7 @@ import re
 import pandas as pd
 import requests
 
-CBOE_URL = "https://cdn.cboe.com/api/global/delayed_quotes/options/_{symbol}.json"
+CBOE_URL = "https://cdn.cboe.com/api/global/delayed_quotes/options/_SPX.json"
 
 # OCC/OSI option symbol, e.g. "SPX260717C00200000":
 #   root (letters) | YYMMDD expiry | C/P | strike x 1000 (8 digits)
@@ -28,9 +28,9 @@ _SYMBOL_RE = re.compile(r"^(?P<root>[A-Z]+)(?P<ymd>\d{6})(?P<cp>[CP])(?P<strike>
 _DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"  # engine/ -> vol-surface/data/
 
 
-def fetch_chain(symbol: str = "SPX") -> dict:
-    """Download the raw chain JSON. Index symbols take a leading underscore (_SPX)."""
-    resp = requests.get(CBOE_URL.format(symbol=symbol), timeout=30)
+def fetch_chain() -> dict:
+    """Download the raw SPX chain JSON from CBOE's delayed-quotes feed."""
+    resp = requests.get(CBOE_URL, timeout=30)
     resp.raise_for_status()
     return resp.json()
 
@@ -73,34 +73,33 @@ def chain_to_frame(raw: dict) -> pd.DataFrame:
     return df
 
 
-def download_chain(symbol: str = "SPX", data_dir=_DATA_DIR) -> pathlib.Path:
-    """Fetch a fresh chain from CBOE and freeze it as spx_<date>.json.
+def download_chain() -> pathlib.Path:
+    """Fetch a fresh chain from CBOE and freeze it under data/ as spx_<date>.json.
 
     Deliberate — use to grab a NEW snapshot even when one already exists.
-    Returns the saved path. ``data_dir`` is gitignored (personal-use data).
+    Returns the saved path. data/ is gitignored (personal-use data).
     """
-    raw = fetch_chain(symbol)
+    raw = fetch_chain()
     date = pd.Timestamp(raw["timestamp"]).strftime("%Y-%m-%d")
-    p = pathlib.Path(data_dir) / f"spx_{date}.json"
+    p = _DATA_DIR / f"spx_{date}.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(raw))
     return p
 
 
-def load_chain(data_dir=_DATA_DIR, date: str | None = None) -> dict:
+def load_chain(date: str | None = None) -> dict:
     """Load a frozen snapshot's raw chain dict from disk (symmetric with fetch_chain).
 
-    Newest snapshot by default; if ``data_dir`` is empty, downloads and freezes
-    one automatically (network hit once, then offline). Pass date='YYYY-MM-DD'
-    to pin a specific snapshot — raises FileNotFoundError if that one is missing.
-    Feed the result to ``chain_to_frame`` for a tidy DataFrame.
+    Newest snapshot by default; if data/ is empty, downloads and freezes one
+    automatically (network hit once, then offline). Pass date='YYYY-MM-DD' to
+    pin a specific snapshot — raises FileNotFoundError if that one is missing.
+    Feed the result to ``chain_to_frame``.
     """
-    d = pathlib.Path(data_dir)
     if date:
-        p = d / f"spx_{date}.json"
+        p = _DATA_DIR / f"spx_{date}.json"
         if not p.exists():
             raise FileNotFoundError(f"no snapshot {p} — check the date or run download_chain()")
     else:
-        snapshots = sorted(d.glob("spx_*.json"))
-        p = snapshots[-1] if snapshots else download_chain(data_dir=data_dir)
+        snapshots = sorted(_DATA_DIR.glob("spx_*.json"))
+        p = snapshots[-1] if snapshots else download_chain()
     return json.loads(p.read_text())
