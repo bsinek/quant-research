@@ -38,8 +38,9 @@ def fetch_chain(symbol: str = "SPX") -> dict:
 def chain_to_frame(raw: dict) -> pd.DataFrame:
     """Flatten CBOE's JSON into one tidy row per contract.
 
-    Columns: expiry, T (years), type ('C'/'P'), strike, bid, ask, mid, last,
-    volume, open_interest, cboe_iv. Snapshot-level spot / as-of live in df.attrs.
+    Columns: root ('SPX'/'SPXW'), expiry, T (years), type ('C'/'P'), strike, bid,
+    ask, mid, volume, open_interest, last_trade_time, cboe_iv. Snapshot-level
+    spot / as-of live in df.attrs.
     """
     data = raw["data"]
     asof = pd.Timestamp(raw["timestamp"])
@@ -51,20 +52,22 @@ def chain_to_frame(raw: dict) -> pd.DataFrame:
         ymd = m["ymd"]
         rows.append(
             {
+                "root": m["root"],
                 "expiry": pd.Timestamp(f"20{ymd[:2]}-{ymd[2:4]}-{ymd[4:6]}"),
                 "type": m["cp"],
                 "strike": int(m["strike"]) / 1000,
                 "bid": o["bid"],
                 "ask": o["ask"],
-                "last": o["last_trade_price"],
                 "volume": o["volume"],
                 "open_interest": o["open_interest"],
+                "last_trade_time": o["last_trade_time"],
                 "cboe_iv": o["iv"],  # CBOE's own IV — for validation, never as input
             }
         )
     df = pd.DataFrame(rows)
     df["mid"] = (df["bid"] + df["ask"]) / 2
     df["T"] = (df["expiry"] - asof.normalize()).dt.days / 365.0
+    df["last_trade_time"] = pd.to_datetime(df["last_trade_time"])
     df.attrs["spot"] = data["current_price"]
     df.attrs["asof"] = asof
     return df
