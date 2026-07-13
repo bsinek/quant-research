@@ -7,7 +7,7 @@
 ## Working
 _Built and functioning now. (API detail lives in the code — see `engine/data.py` docstrings.)_
 - `engine/data.py` — SPX chain fetch / disk-cache / tidy-frame conversion. Built, verified.
-- `engine/filters.py` — `volume_mask` / `bidask_mask` quality filters (parametrized floors, return boolean masks). Built.
+- `engine/filters.py` — `bidask_mask` / `staleness_mask` (v1 filters) + `volume_mask` (available, dropped from default; ADR 008). Boolean masks, parametrized. Built.
 - `engine/surface.py` — `implied_forwards` / `forward_by_expiry` / `select_otm` (parity forward + OTM selection). Built, verified.
 - Packaging — `pyproject.toml` (hatchling) editable install; `requirements.txt` retired.
 - Docs: README, DECISIONS, plan.

@@ -31,3 +31,20 @@ def bidask_mask(df: pd.DataFrame, min_price: float = 0.0) -> pd.Series:
     wings). Raise ``min_price`` to drop penny / near-worthless quotes too.
     """
     return (df['bid'] > min_price) & (df['ask'] > min_price)
+
+
+def staleness_mask(df: pd.DataFrame, max_days: int = 7) -> pd.Series:
+    """Keep contracts traded within ``max_days`` of the snapshot (True = keep).
+
+    Liquidity gate keyed on ``last_trade_time`` vs the snapshot as-of time
+    (``df.attrs['asof']``). A contract not traded within the window — or never
+    traded (no timestamp) — is dropped. Leaner and less path-dependent than
+    volume>0, which demands a trade the *same session* (ADR 008): a contract that
+    printed a few days ago but not today is still liquid. ``max_days`` is the
+    recency window (calendar days).
+    """
+    asof = df.attrs['asof']
+    if asof.tzinfo is not None:
+        asof = asof.tz_localize(None)
+    age = (asof - df['last_trade_time']).dt.days
+    return age <= max_days

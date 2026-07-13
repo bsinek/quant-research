@@ -3,6 +3,11 @@
 > One entry per architectural decision. Append-only, newest on top.
 > State the decision, not a claim of truth — hedge to the evidence, stamp the date.
 
+## 008. Filters revised: drop volume, use OTM + bid/ask + staleness — 2026-07-13
+- **Decision:** v1 filters = OTM-selection + `bid/ask>0` + `staleness_mask` (last trade within N days, default 7). `volume>0` is dropped from the default pipeline (`volume_mask` kept as an available function). Spread-outlier (median+MAD preferred over mean+Nσ) and monotonicity stay deferred.
+- **Why:** EDA on live intraday data showed `volume>0` is identical to "traded today" (same keep-set as last-trade ≤ 1d), dropping ~61% and *asymmetrically* gutting the untraded wing (e.g. OTM calls on a down day) — fragile for a run-anytime tool. `OTM + bid/ask` alone gives a clean, full, both-wings smile (median quote width 1.7%); `staleness ≤ 7d` is a leaner, less path-dependent liquidity gate. Quote-based filters are direction/time-independent.
+- **Trade-off:** Staleness is still trade-based, so a *sustained* one-directional market could thin the quiet side (far less than volume). The deferred spread-outlier via **median+MAD** is the more principled gate (robust to the masking effect that breaks mean+Nσ). Supersedes the volume portion of ADR 005.
+
 ## 007. Packaging: pyproject + hatchling (editable install), drop requirements.txt — 2026-07-12
 - **Decision:** `vol-surface` is an installable package via `pyproject.toml` (hatchling backend); `engine` is the package. Install with `pip install -e .` (core) or `pip install -e ".[dev]"` (adds `ipykernel` for notebooks). The 108-line `pip freeze` `requirements.txt` is deleted. Core deps: pandas, numpy, matplotlib, requests. Dev extra: ipykernel.
 - **Why:** Notebooks moved to `notebooks/`, breaking cwd-based imports. An editable install makes `engine` importable from any cwd with no `sys.path` hacks and scales to N notebooks with one setup. Hatchling leaves no `.egg-info` in the source tree (setuptools does). Splitting notebook tooling into a `[dev]` extra keeps `engine`'s runtime deps honest — the library doesn't need Jupyter to function.
@@ -14,6 +19,7 @@
 - **Trade-off:** The v1 surface shows CBOE's IV, not ours — the own-pricer milestone must swap it in before any correctness claim about our solver.
 
 ## 005. Filters: v1 = bid/ask>0 + volume>0; heavier filters deferred — 2026-07-11
+> **Superseded in part (2026-07-13):** the `volume>0` choice here is reversed by ADR 008 (volume is asymmetric/fragile intraday).
 - **Decision:** v1 keeps `bid>0 & ask>0 & volume>0` plus OTM-selection off the forward. Monotonicity (no-arb), spread-outlier, and true-settlement-time `T` are deferred to a final polish pass.
 - **Why:** The two cheap filters remove the bulk of the garbage (64% zero-volume; the exploding wings). `volume>0` (per-day, fresh) is the workhorse; OI is near-redundant (removes only ~461 more) and lags EOD, so it is not required. The heavier filters are legit but lower marginal value for a raw scatter.
 - **Trade-off:** The raw v1 surface keeps minor artifacts (residual noisy points, the AM/PM zigzag) that the deferred filters + SVI would clean.
