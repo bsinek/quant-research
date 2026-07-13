@@ -7,7 +7,7 @@
 ## Working
 _Built and functioning now. (API detail lives in the code — see `engine/data.py` docstrings.)_
 - `engine/data.py` — SPX chain fetch / disk-cache / tidy-frame conversion. Built, verified.
-- `engine/filters.py` — `filter_volume` / `filter_bidask` quality filters (parametrized floors). Built.
+- `engine/filters.py` — `volume_mask` / `bidask_mask` quality filters (parametrized floors, return boolean masks). Built.
 - Packaging — `pyproject.toml` (hatchling) editable install; `requirements.txt` retired.
 - Docs: README, DECISIONS, plan.
 
