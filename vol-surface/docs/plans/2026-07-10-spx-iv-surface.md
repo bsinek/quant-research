@@ -1,31 +1,26 @@
-# SPX IV Surface — Design Spec & v1 Plan
+# SPX IV Surface — Design Spec & Plan
 
-**Date:** 2026-07-10 · **Status:** design agreed; v1a not yet built
+**Date:** 2026-07-10 (updated 2026-07-11) · **Status:** data layer built; v1 (clean + visualize) next
 **Author of record:** brainstormed with Ben; Ben writes the finance core.
 
 ## Goal
 
-From a single SPX option-chain snapshot, back out implied volatility per contract
-and render the 3D volatility surface. Built so that live / replay / backtest are
-later *additions*, not rewrites.
+From a single SPX option-chain snapshot, clean the data and render the 3D
+volatility surface. Built so live / replay / backtest are later *additions*, not
+rewrites.
 
 ## Roadmap — the ladder
 
-Each rung stands on the one below it. No rung is a rewrite of the prior.
-
-| Rung | What it is | Where the hard part lives |
+| Rung | What it is | Focus |
 | --- | --- | --- |
-| **v1a — raw surface** *(current milestone)* | Back out IV from market prices; plot IV vs spot-log-moneyness `ln(K/S)`, **calls only**. Ugly-but-real surface on screen. | Data, cleaning, the solver |
-| **v1b — forward-corrected** | Compute forward `F` per expiry; switch axis to `ln(K/F)`; stitch OTM puts + calls. Smiles center. | Forward + put-call parity |
-| **v2 — SVI fit** | Fit a Gatheral SVI smile per expiry *through* the v1 dots; overlay curve on dots. | Curve fitting |
-| **v3 — ML / no-arb** | Fancier smoothing (spline / GP / NN) with butterfly + calendar no-arbitrage checks. | Arbitrage constraints |
+| **v1 — clean + visualize** *(current)* | Filter the chain, assemble the grid, plot one slice (the smile) then the full 3D surface as a **raw scatter, no fit**. IV comes from CBOE's `iv` field, to validate the clean→slice→surface pipeline end-to-end. | Data cleaning + visualization |
+| **Own pricer** *(next)* | `blackscholes.py` (price + vega) + `impliedvol.py` (solver); swap CBOE `iv` → our own IV; validate against `cboe_iv`. | Ben writes — the interview surface |
+| **v2 — SVI fit** | Fit a Gatheral SVI smile per expiry *through* the raw dots; overlay. | Smoothing / interpolation / no-arb |
+| **v3 — ML / no-arb** | Optional fancier smoothing + butterfly/calendar checks. | Optional flourish |
 
-## Why raw-first (v1a before SVI)
-
-SVI is not a version of the surface — it is a curve fit *through* the surface's
-points. It has nothing to fit until the raw IVs are backed out. If v1a is wrong,
-SVI fits garbage smoothly and you never notice. The resume-strong visual is raw
-dots + SVI curve overlaid; that requires v1a to exist first.
+Each rung stands on the one below. The fit (SVI/ML) only launders *random* noise
+and fills gaps — *systematic* artifacts and garbage are cleaned upfront by the
+filters, never left for the fit.
 
 ## Architecture — one pure core, swappable edges
 
@@ -35,68 +30,73 @@ dots + SVI curve overlaid; that requires v1a to exist first.
 ```
 
 The **core** is a pure function `normalized chain snapshot → surface`. The data
-adapter and the plotter are the swappable edges. Later, live / replay / backtest
-are just different *drivers* calling this same unchanged core — that is what buys
-additions-not-rewrites.
+adapter and the plotter are the swappable edges. Live / replay / backtest are
+later just different *drivers* calling this same core.
 
 | File | Responsibility | Author |
 | --- | --- | --- |
-| `data.py` | Fetch SPX chain, parse symbols, normalize to the fixed schema. The **only** place the data source lives. | me (on request) |
+| `data.py` | Fetch SPX chain, parse symbols, normalize to the fixed schema. **Built.** | me |
+| `surface.py` | Filter, imply forward per expiry, OTM-select + stitch, build the (moneyness, T) IV grid | pair |
+| `plot.py` | slice + 3D surface render helpers | me (on request) |
 | `blackscholes.py` | BS price + vega | **Ben** |
 | `impliedvol.py` | Invert BS per contract (Newton via vega, Brent fallback) | **Ben** |
-| `surface.py` | Clean / filter, `T` in years, (v1b) imply forward, pick OTM, build the IV grid | pair |
-| `plot.py` | 3D surface render helper | me (on request) |
-| `notebook.ipynb` | Import the above; tell the story; show the surface | pair |
-| `tests/` | Textbook-value + round-trip + CBOE-oracle tests | pair |
+| `surface.ipynb` | Import the above; tell the story; show the surface | pair |
+| `tests/` | round-trip + CBOE-oracle tests | pair |
+
+## Decisions (rationale + trade-offs in `docs/DECISIONS.md`)
+
+- **Underlying:** SPX — European, cash-settled → clean Black-Scholes.
+- **Price:** mid. **Day count:** calendar/365 (matches the `cboe_iv` oracle).
+- **Forward:** implied via put-call parity; moneyness axis = `ln(K/F)`.
+- **v1 filters:** `bid>0 & ask>0 & volume>0`, then **OTM-select off the forward** —
+  OTM puts below `F`, OTM calls above `F`, **stitched at `F`** (max signal; not calls-only).
+- **Root/expiry:** keep *all* expiries; prefer SPXW; dedupe only the 5 same-date
+  3rd-Friday collisions.
+- **Deferred to a final polish pass:** monotonicity (no-arb) filter, spread-outlier
+  filter, true-settlement-time `T` refinement.
 
 ## Data source — CBOE free delayed quotes (verified 2026-07-10)
 
 - Endpoint: `https://cdn.cboe.com/api/global/delayed_quotes/options/_SPX.json`
-  (index symbols take a leading underscore). HTTP 200, ~13 MB, ~29k contracts.
-- **Spot:** `data.current_price`.
-- **Per-contract fields used:** `option` (symbol), `bid`, `ask`, `bid_size`,
-  `ask_size`, `volume`, `open_interest`, `last_trade_price`.
-- **Validation oracle:** CBOE also returns `iv`, `delta/gamma/vega/theta/rho`,
-  and `theo` per contract. We compute our own IV/Greeks and *validate against*
-  CBOE's — never use CBOE `iv` as an input.
-- **Symbol format (OCC/OSI):** `SPX260717C00200000` = root + `YYMMDD` expiry +
-  `C|P` + strike×1000. Roots seen: `SPX` (AM-settled monthly) and `SPXW`
-  (PM-settled weekly).
-- **Not in the feed** — supplied as inputs: risk-free rate `r`, dividend yield `q`.
-  v1a uses flat constants; refine later (curve / imply-from-parity).
-- Data is delayed / last-close — fine for a static snapshot.
+  (index symbols take a leading underscore). ~13 MB, ~29k contracts.
+- **Spot:** `data.current_price`. **Snapshot time:** `timestamp`.
+- **Validation oracle:** CBOE returns its own `iv` + Greeks + `theo` per contract.
+  v1 plots CBOE `iv`; the own-pricer milestone computes ours and validates against it.
+- **Symbol (OCC/OSI):** `SPX260717C00200000` = root + `YYMMDD` + `C|P` + strike×1000.
+  Roots: `SPX` (AM-settled monthly + LEAPS), `SPXW` (PM-settled weekly/daily/EOM).
+- **Not in the feed:** `r` (small, known — used in parity), `q` (sidestepped by parity).
 - **Later:** purchased SPX history (2022-01-01 → 2022-03-31) drops in behind the
-  same normalized schema as a *replay* source; nothing downstream changes.
+  same schema as a *replay* source.
 
 ## Normalized chain schema (`data.py` output)
 
-Per contract row: `expiry` (date), `T` (years), `type` (`C`/`P`), `strike`,
-`bid`, `ask`, `mid`, `volume`, `open_interest`, `cboe_iv` (validation only).
-Snapshot-level: `spot`, `timestamp`.
+Per contract row: `expiry` (date), `T` (years), `type` (`C`/`P`), `strike`, `bid`,
+`ask`, `mid`, `volume`, `open_interest`, `cboe_iv`. Snapshot-level: `spot`, `asof`.
 
-## v1a — scope & acceptance criteria
+## v1 — scope & acceptance criteria
 
-Acceptance criteria are written before building and become the tests.
+**Scope:** one live snapshot, cleaned, **raw scatter (no fit)**, IV from `cboe_iv`,
+OTM puts + calls stitched at the forward, axis `ln(K/F)` vs `T`.
 
-**Scope:** calls only, spot-log-moneyness, one live snapshot, raw dots (no fit).
+1. `data` fetches, parses ≥ 3 known symbols correctly, emits the schema.
+2. Filter keeps only `bid>0 & ask>0 & volume>0` — the exploding wings are gone.
+3. Forward computed per expiry via put-call parity (≈ flat across strikes).
+4. OTM selection: puts below `F`, calls above `F`, stitched into one smile per expiry.
+5. Notebook renders (a) one expiry **slice** (the smile) and (b) the **full 3D
+   surface** (`ln(K/F)` × `T` × IV) from one snapshot.
 
-1. `blackscholes.bs_price` matches independent reference values to ≤ 1e-6;
-   `bs_vega` matches a finite-difference check to ≤ 1e-6.
-2. `impliedvol.implied_vol` round-trips: price at a known σ, recover σ to ≤ 1e-6.
-3. On liquid near-ATM CBOE contracts, our IV matches CBOE `iv` within 0.5 vol pts.
-4. `data` fetches, parses ≥ 3 known symbols correctly, and emits the schema.
-5. Filtering drops zero-volume / zero-size / crossed-quote / non-positive-mid rows.
-6. Notebook renders a 3D surface (IV vs `ln(K/S)` vs `T`) from one live snapshot.
+## Own-pricer milestone — acceptance criteria (Ben writes)
+
+1. `bs_price` matches independent reference to ≤ 1e-6; `bs_vega` matches finite-diff to ≤ 1e-6.
+2. `implied_vol` round-trips: price at a known σ, recover σ to ≤ 1e-6.
+3. On liquid near-ATM contracts, our IV matches `cboe_iv` within 0.5 vol points.
 
 ## Who writes what
 
-- **Ben:** `blackscholes.py`, `impliedvol.py` — the interview surface. Claude
-  guides and reviews; touches code only when Ben says so.
-- **Claude (on request):** `data.py`, `plot.py`, test harness.
+- **Ben:** `blackscholes.py`, `impliedvol.py` (the interview surface); drives the build.
+- **Claude (on request):** `data.py`, `plot.py`, filter/grid plumbing, tests.
 
 ## Deferred / open
 
-- `r`, `q` sourcing — flat constant now; curve or imply-from-parity later.
-- `SPX` vs `SPXW` handling — v1a may include both; revisit if it muddies the grid.
-- SPX is European + cash-settled, so Black-Scholes' assumptions hold (this is why
-  SPX was chosen over SPY).
+- Own pricer swaps `cboe_iv` → our IV (next milestone).
+- Monotonicity, spread-outlier, true-settlement-time `T` — final polish pass.
