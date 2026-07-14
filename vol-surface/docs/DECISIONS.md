@@ -3,7 +3,13 @@
 > One entry per architectural decision. Append-only, newest on top.
 > State the decision, not a claim of truth — hedge to the evidence, stamp the date.
 
+## 009. v1 filters simplified to OTM + bid/ask; staleness dropped, spread filter → pricer — 2026-07-14
+- **Decision:** v1 clean pipeline = OTM-selection + `bid/ask>0` only. `staleness_mask` dropped from the default (kept available in `engine/filters.py`, like `volume_mask`). The spread-outlier filter (median+MAD) is promoted from "someday" to the **pricer milestone** (v2).
+- **Why:** On the pinned snapshot, `staleness ≤ 7d` dropped ~half of each slice's OTM quotes — and the dropped ones were *tight, never-traded* market-maker quotes (median spread 1.6%, all `last_trade = NaT`). We price off the **mid**, so a two-sided quote is usable whether or not it ever traded; staleness was discarding good data. Dropping it keeps ~46% of the chain (vs ~39%) with no loss of smile quality, and the forward's *median* is unchanged (7536.2 → 7536.3 — the extra per-strike scatter is wing dispersion the median steps over). The genuinely bad quotes are the **wide wings** (40–57% relative spread), which the spread filter targets — but `cboe_iv` (v1) is CBOE-smoothed and stays clean despite them. Our own mid-based IV (v2) won't be, so the spread filter lands there.
+- **Trade-off:** v1 keeps some wide wing quotes (harmless under `cboe_iv`; must be filtered once IV comes from the mid). Supersedes the staleness portion of ADR 008.
+
 ## 008. Filters revised: drop volume, use OTM + bid/ask + staleness — 2026-07-13
+> **Superseded in part (2026-07-14):** the `staleness` portion is dropped by ADR 009 (it discards tight never-traded quotes; v1 = OTM + bid/ask).
 - **Decision:** v1 filters = OTM-selection + `bid/ask>0` + `staleness_mask` (last trade within N days, default 7). `volume>0` is dropped from the default pipeline (`volume_mask` kept as an available function). Spread-outlier (median+MAD preferred over mean+Nσ) and monotonicity stay deferred.
 - **Why:** EDA on live intraday data showed `volume>0` is identical to "traded today" (same keep-set as last-trade ≤ 1d), dropping ~61% and *asymmetrically* gutting the untraded wing (e.g. OTM calls on a down day) — fragile for a run-anytime tool. `OTM + bid/ask` alone gives a clean, full, both-wings smile (median quote width 1.7%); `staleness ≤ 7d` is a leaner, less path-dependent liquidity gate. Quote-based filters are direction/time-independent.
 - **Trade-off:** Staleness is still trade-based, so a *sustained* one-directional market could thin the quiet side (far less than volume). The deferred spread-outlier via **median+MAD** is the more principled gate (robust to the masking effect that breaks mean+Nσ). Supersedes the volume portion of ADR 005.
@@ -42,7 +48,8 @@
 ## 001. Data fetched at runtime, gitignored, not committed — 2026-07-10
 - **Decision:** The SPX chain is pulled live from CBOE's free delayed feed by `engine/data.py` and frozen to a dated file under `data/`, which is gitignored. The notebook is committed with rendered outputs; the raw chain is never committed.
 - **Why:** CBOE's website terms (read 2026-07-10) license the data for personal, non-commercial use and prohibit redistribution/publishing; committing the chain to a public repo would be redistribution. Fetch-at-runtime keeps use within personal-use bounds and still lets anyone reproduce the notebook.
-- **Trade-off:** Recruiters can't diff the exact input data, and a live run sees a *different* (current) chain than the committed outputs; exact-number reproducibility depends on the local dated snapshot, which isn't shared. The unverified "auto-extraction / IP-blocking" clause (seen in one search summary, not confirmed on the terms page) is a residual risk.
+- **Trade-off:** Recruiters can't diff the exact input data, and a live run sees a *different* (current) chain than the committed outputs; exact-number reproducibility depends on the local dated snapshot, which isn't shared.
+- **Update (2026-07-14):** re-read of `cboe.com/terms` confirmed the redistribution ban is explicit and unqualified by commercial intent (*"...store ... in an electronic retrieval system, ... publish, ... distribute ... without Cboe's prior written consent"*), reaffirming the no-commit decision. The previously-flagged "auto-extraction / IP-blocking" clause does **not** exist on the terms page (refuted — it was in a separate vendor-only data policy that doesn't bind anonymous endpoint users). No attribution requirement applies to us either.
 
 ## NNN. <short decision title> — YYYY-MM-DD
 - **Decision:** what was chosen
