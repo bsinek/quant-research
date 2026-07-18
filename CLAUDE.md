@@ -9,6 +9,9 @@ Monorepo of independent quantitative research projects. Each top-level directory
 - Docstrings explain the *why* / anything non-obvious — don't restate the signature.
 - Functions returning a DataFrame list their columns in the docstring (a signature can't show them).
 
+## Notebooks
+- Never install anything to execute a notebook (`nbconvert`, `nbclient`, ...). Edit cells only; Ben runs it and commits the rendered outputs.
+
 ## Commits
 - Conventional commits with the project dir as scope: `type(vol-surface): summary`. Repo-wide changes drop the scope (`chore: ...`).
 - Types: feat / fix / refactor / docs / test / perf / chore.
