@@ -33,6 +33,19 @@ def bidask_mask(df: pd.DataFrame, min_price: float = 0.0) -> pd.Series:
     return (df['bid'] > min_price) & (df['ask'] > min_price)
 
 
+def expiry_mask(df: pd.DataFrame, min_T: float = 0.0) -> pd.Series:
+    """Keep contracts with more than ``min_T`` years to expiry (True = keep).
+
+    The default 0 drops only same-day/expired contracts (T=0): they hold no time
+    value and no IV exists, since Black-76's d1/d2 divide by ``sigma*sqrt(T)=0``.
+    Same-day expiries land exactly on 0 because T is calendar-days/365 (see the
+    deferred settlement-time-T note); a finer clock would give them a tiny positive
+    T, but they'd still need dropping once past settlement. Raise ``min_T`` to also
+    drop noisy near-expiry contracts (e.g. 0.02 ≈ one week).
+    """
+    return df['T'] > min_T
+
+
 def staleness_mask(df: pd.DataFrame, max_days: int = 7) -> pd.Series:
     """Keep contracts traded within ``max_days`` of the snapshot (True = keep).
 

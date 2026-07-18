@@ -2,24 +2,25 @@
 
 > Date-stamped snapshot of where the project stands. Rewrite freely — it's a snapshot, not a log.
 
-**Last updated:** 2026-07-14
+**Last updated:** 2026-07-17
 
 ## Working
 _Built and functioning now. (API detail lives in the code — see `engine/*.py` docstrings.)_
 - `engine/data.py` — SPX chain fetch / disk-cache / tidy-frame conversion. Built, verified.
-- `engine/filters.py` — `bidask_mask` (v1 filter) + `staleness_mask` / `volume_mask` (available, both dropped from the default; ADR 009 / 008). Built.
+- `engine/filters.py` — `bidask_mask` + `expiry_mask` (v1 filters) + `staleness_mask` / `volume_mask` (available, dropped from the default; ADR 009 / 008). Built.
 - `engine/surface.py` — `implied_forwards` / `forward_by_expiry` / `select_otm` (parity forward + OTM selection). Built, verified.
+- `engine/blackscholes.py` — `bs_price` (Black-76 off the parity forward) + `implied_vol` (vectorized bisection). Built, validated vs `cboe_iv` (0.14 vp median, corr 0.9997; synthetic σ round-trip 3.8e-7). ADR 010.
 - `notebooks/eda.ipynb` — evidence-doc EDA: coverage → convergence → forward(parity QC) → filters(raw→clean) → smile → term structure. Pinned to the 2026-07-13 snapshot, committed with rendered outputs. v1 filters = OTM + bid/ask (ADR 009), IV = `cboe_iv` (ADR 006).
 - Packaging — `pyproject.toml` (hatchling) editable install.
 - Docs: README, DECISIONS, ARCHITECTURE, plan.
 
 ## In flight
 _Actively being worked on._
-- (none — EDA shipped.)
+- (none — pricer + solver shipped.)
 
 ## Next
 _The committed next 1–2 steps._
-1. **Own-pricer (v2)** — Ben writes `blackscholes.py` (price + vega) + `impliedvol.py` (solver). Swap `cboe_iv` → our IV in the pipeline; **validate our IV against `cboe_iv`** (the oracle). Add the **spread-outlier filter** (median+MAD) — now needed, since mid-based IV lacks CBOE's smoothing and the wide wings (40–57% spread) would go noisy (ADR 009).
+1. **Finish v2** — swap `cboe_iv` → our IV in the EDA/pipeline; add the **spread-outlier filter** (median+MAD), now needed since mid-based IV lacks CBOE's smoothing and the wide wings (40–57% spread) go noisy (ADR 009). Re-render the EDA to include `expiry_mask` (ADR 011). Optional polish: `bs_vega` + safeguarded-Newton solver (bisection works and is validated; Newton is a speed upgrade, not correctness).
 2. **The surface / grid (v3)** — resample the clean slices onto a regular `(moneyness, T)` grid; SVI/SSVI fit → smooth, arbitrage-free surface (fills the ragged fan, √T scaling baked in). Then render the full 3D surface with *our* IV. No-arb (monotonicity) check.
 
 ## Ideas (deferred)
