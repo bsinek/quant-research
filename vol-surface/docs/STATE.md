@@ -10,6 +10,7 @@ _Built and functioning now. (API detail lives in the code — see `engine/*.py` 
 - `engine/filters.py` — `bidask_mask` + `expiry_mask` (v1 filters) + `staleness_mask` / `volume_mask` (available, dropped from the default; ADR 009 / 008). Built.
 - `engine/surface.py` — `implied_forwards` / `forward_by_expiry` / `select_otm` (parity forward + OTM selection). Built, verified.
 - `engine/blackscholes.py` — `bs_price` (Black-76 off the parity forward) + `implied_vol` (vectorized bisection). Built, validated vs `cboe_iv` (0.14 vp median, corr 0.9997; synthetic σ round-trip 3.8e-7). ADR 010.
+- `notebooks/surface.ipynb` — the 3D surface from **our** solver's IV: clean pipeline + global root blend → invert every quote → raw scatter (dots only, no fit) + an all-expiries flat view. Built, run, committed with outputs. On the 07-13 snapshot: 11,506 clean OTM quotes, 100% solved.
 - `notebooks/eda.ipynb` — evidence-doc EDA: coverage → convergence → filters(bid/ask + T>0, on strikes) → forward(parity QC) + OTM → smile → term structure. Cleaning and modeling are separate sections, mirroring `filters.py` vs `surface.py`. Pinned to the 2026-07-13 snapshot, committed with rendered outputs. v1 filters = bid/ask + T>0, then OTM (ADR 009/011), IV = `cboe_iv` (ADR 006).
 - Packaging — `pyproject.toml` (hatchling) editable install.
 - Docs: README, DECISIONS, ARCHITECTURE, plan.
@@ -20,7 +21,7 @@ _Actively being worked on._
 
 ## Next
 _The committed next 1–2 steps._
-1. **New notebook, SVI**: plot our own solver's IV as a raw smile/surface, then fit SVI/SSVI through it on a `(moneyness, T)` grid → smooth, arbitrage-free surface (fills the ragged fan, √T scaling baked in). No-arb (monotonicity) check. Separate from `eda.ipynb`, which keeps `cboe_iv` and is unaffected. A CBOE-vs-ours side-by-side can go in this notebook too, once the SVI surface exists to compare against.
+1. **SVI fit**, in `surface.ipynb` on top of the raw dots: fit SVI/SSVI per expiry, resample onto a regular `(moneyness, T)` grid → smooth, arbitrage-free surface (fills the ragged fan, √T scaling baked in). No-arb (calendar/butterfly) check. A CBOE-vs-ours side-by-side belongs here once the fit exists to compare against.
 2. Spread-outlier filter (median+MAD) — later, once wide-wing noise in our mid-based IV actually needs it.
 3. `bs_vega` + safeguarded-Newton solver — later polish; bisection already works and is validated.
 
@@ -32,3 +33,4 @@ _Parking lot, uncommitted._
 - True-settlement-time `T` (AM 9:30 ET / PM 16:00 ET) — dissolves the AM/PM zigzag; isolated to `data.py`; needs timezone verification of the CBOE `timestamp`. (Note: the "0.3 vp long-end zigzag" from ADR 004 sits uneasily with this session's convergence finding of ~0.04 vp far-out — re-measure before trusting.)
 - Mid-session vs frozen-close snapshot for the pinned data — mid-session has tighter spreads but async cross-sectional wobble (moving market); a frozen close is smoother. Current pin = 07-13 after-close (smooth). Revisit when re-pinning.
 - ML / neural-net fit as an alternative to SVI; purchased 2022 SPX history as a replay source.
+- **Configurable data dir** — `data.py`'s `_DATA_DIR` is `__file__`-relative, so it assumes the package sits inside the checkout; true only under `pip install -e .`, and a plain install silently points it at `site-packages/data`. Layer a `data_dir` param over an env var over today's default when it bites (the param is also what makes the module testable).
