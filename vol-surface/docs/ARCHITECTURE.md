@@ -15,7 +15,7 @@ flowchart LR
     data --> filters[filters.py<br/>quality masks]
     filters --> surface[surface.py<br/>parity forward + OTM]
     surface --> bs[blackscholes.py<br/>Black-76 price + IV]
-    bs -.-> grid[grid / SVI fit<br/>v3, not built]
+    bs -.-> grid[grid / SVI fit<br/>not built]
 ```
 
 ## Components

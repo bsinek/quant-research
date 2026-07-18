@@ -20,8 +20,9 @@ _Actively being worked on._
 
 ## Next
 _The committed next 1–2 steps._
-1. **Finish v2** — add the **spread-outlier filter** (median+MAD), needed once IV comes off the mid, since it lacks CBOE's smoothing and the wide wings (40–57% spread) go noisy (ADR 009). Then swap `cboe_iv` → our IV — but *not* in `eda.ipynb`: our IV is a model output, not observed data, so the pricer-vs-`cboe_iv` validation belongs in its own notebook (decided 2026-07-18). Optional polish: `bs_vega` + safeguarded-Newton solver (bisection works and is validated; Newton is a speed upgrade, not correctness).
-2. **The surface / grid (v3)** — resample the clean slices onto a regular `(moneyness, T)` grid; SVI/SSVI fit → smooth, arbitrage-free surface (fills the ragged fan, √T scaling baked in). Then render the full 3D surface with *our* IV. No-arb (monotonicity) check.
+1. **New notebook, SVI**: plot our own solver's IV as a raw smile/surface, then fit SVI/SSVI through it on a `(moneyness, T)` grid → smooth, arbitrage-free surface (fills the ragged fan, √T scaling baked in). No-arb (monotonicity) check. Separate from `eda.ipynb`, which keeps `cboe_iv` and is unaffected. A CBOE-vs-ours side-by-side can go in this notebook too, once the SVI surface exists to compare against.
+2. Spread-outlier filter (median+MAD) — later, once wide-wing noise in our mid-based IV actually needs it.
+3. `bs_vega` + safeguarded-Newton solver — later polish; bisection already works and is validated.
 
 ## Ideas (deferred)
 _Parking lot, uncommitted._
@@ -30,4 +31,4 @@ _Parking lot, uncommitted._
 - Monotonicity (no-arb) filter — longest-monotonic-subsequence; good résumé showcase.
 - True-settlement-time `T` (AM 9:30 ET / PM 16:00 ET) — dissolves the AM/PM zigzag; isolated to `data.py`; needs timezone verification of the CBOE `timestamp`. (Note: the "0.3 vp long-end zigzag" from ADR 004 sits uneasily with this session's convergence finding of ~0.04 vp far-out — re-measure before trusting.)
 - Mid-session vs frozen-close snapshot for the pinned data — mid-session has tighter spreads but async cross-sectional wobble (moving market); a frozen close is smoother. Current pin = 07-13 after-close (smooth). Revisit when re-pinning.
-- v3 ML / no-arb; purchased 2022 SPX history as a replay source.
+- ML / neural-net fit as an alternative to SVI; purchased 2022 SPX history as a replay source.
