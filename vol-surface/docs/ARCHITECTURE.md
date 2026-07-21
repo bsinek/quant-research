@@ -14,8 +14,10 @@ flowchart LR
     CBOE[(CBOE feed)] --> data[data.py<br/>fetch / cache / tidy-frame]
     data --> filters[filters.py<br/>quality masks]
     filters --> surface[surface.py<br/>parity forward + OTM]
-    surface --> bs[blackscholes.py<br/>Black-76 price + IV]
-    bs -.-> grid[grid / SVI fit<br/>not built]
+    surface --> bs[blackscholes.py<br/>Black-76 price + IV + vega]
+    bs --> svi[svi.py<br/>raw SVI per expiry + g k]
+    svi --> ssvi[ssvi.py<br/>global arb-free SSVI]
+    svi --> metrics[metrics.py<br/>ATM / 25d-skew read-outs]
 ```
 
 ## Components
@@ -32,8 +34,19 @@ _Each major unit and its single responsibility._
   (`select_otm`) and place the `ln(K/F)` moneyness axis. Depends on the modeled forward, so it
   runs **after** the quote filters (the forward is computed from the surviving set).
 - **`blackscholes.py`** — Black-76 pricing off the parity forward. `bs_price` maps σ → price;
-  `implied_vol` inverts price → σ numerically (vectorized bisection). CBOE's `iv` is the
-  validation oracle, never an input (ADR 010).
+  `implied_vol` inverts price → σ numerically (vectorized bisection); `bs_vega` = ∂price/∂σ
+  (fit weights + a future Newton solver). CBOE's `iv` is the validation oracle, never an input
+  (ADR 010).
+- **`svi.py`** — raw SVI per expiry in total-variance space. `svi_w` (the parameterization),
+  `fit_slice` (Zeliade quasi-explicit: exact linear solve for `a, bρ, b` inside a 2-D
+  Nelder-Mead search over `m, σ`), `fit_surface` (per-expiry loop → param table + diagnostics),
+  `svi_g` (Gatheral-Jacquier butterfly `g(k) ≥ 0`). ADR 012.
+- **`ssvi.py`** — global SSVI surface. `ssvi_w` (power-law `φ(θ)=η θ^{-γ}`), `fit_ssvi` (one
+  `(ρ, η, γ)` fit under GJ Thm 4.2 butterfly constraints → arb-free by construction),
+  `atm_theta` (θ_T term structure from the raw-SVI ATM). ADR 013.
+- **`metrics.py`** — read-outs off the fitted surface: `surface_metrics` (ATM vol, 25-delta
+  skew per expiry) and `butterfly_free_fraction`. Needs the fit — the 25-delta strike is
+  rarely listed, so it's read off the curve.
 
 ## Data / interfaces
 _Key data models and the durable interface surface._
