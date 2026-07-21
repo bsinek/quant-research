@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from scipy.optimize import least_squares
+from scipy.optimize import minimize
 
 from engine.svi import svi_w
 
@@ -54,29 +54,40 @@ def atm_theta(surface: pd.DataFrame) -> pd.DataFrame:
 
 
 def fit_ssvi(df, weight_col=None) -> dict:
-    """Fit one global SSVI (rho, eta, gamma) to all quotes at once.
+    """Fit one global SSVI (rho, eta, gamma) to all quotes, constrained arb-free.
 
     ``df`` needs columns: k (log-moneyness), w (total variance), theta (ATM total variance
-    for that quote's expiry), and ``weight_col`` if given. Returns
-    {rho, eta, gamma, rmse, butterfly_ok}. theta must be monotone in maturity for calendar
-    no-arb (the caller's responsibility); butterfly is verified here via GJ Thm 4.2.
+    for that quote's expiry), and ``weight_col`` if given. Minimizes weighted squared error
+    subject to the GJ Thm 4.2 butterfly conditions (SLSQP), so the returned surface is
+    butterfly-free by construction. theta must be monotone in maturity for calendar no-arb
+    (the caller's responsibility). Returns {rho, eta, gamma, rmse, butterfly_ok}.
     """
     k = df["k"].to_numpy(dtype=float)
     w = df["w"].to_numpy(dtype=float)
     theta = df["theta"].to_numpy(dtype=float)
-    sqrt_wt = np.sqrt(df[weight_col].to_numpy(dtype=float)) if weight_col else 1.0
+    wt = df[weight_col].to_numpy(dtype=float) if weight_col else np.ones_like(w)
+    theta_u = np.unique(theta)
 
-    def resid(params):
-        rho, eta, gamma = params
-        return sqrt_wt * (ssvi_w(k, theta, rho, eta, gamma) - w)
+    def objective(p):
+        rho, eta, gamma = p
+        return np.sum(wt * (ssvi_w(k, theta, rho, eta, gamma) - w)**2)
 
-    res = least_squares(
-        resid, x0=[-0.5, 1.0, 0.5],
-        bounds=([-0.999, 1e-6, 1e-3], [0.999, 10.0, 0.999]),
+    def butterfly_margin(p):
+        # both GJ Thm 4.2 conditions over every theta; >= 0 keeps the surface arb-free
+        rho, eta, gamma = p
+        phi = eta * theta_u**(-gamma)
+        c1 = theta_u * phi * (1 + abs(rho))          # need < 4
+        c2 = theta_u * phi**2 * (1 + abs(rho))       # need <= 4
+        return np.min(np.concatenate([4 - 1e-4 - c1, 4 - c2]))
+
+    res = minimize(
+        objective, x0=[-0.5, 1.0, 0.5], method="SLSQP",
+        bounds=[(-0.999, 0.999), (1e-6, 10.0), (1e-3, 0.999)],
+        constraints=[{"type": "ineq", "fun": butterfly_margin}],
     )
     rho, eta, gamma = res.x
     rmse = float(np.sqrt(np.mean((ssvi_w(k, theta, rho, eta, gamma) - w)**2)))
     return {
         "rho": rho, "eta": eta, "gamma": gamma, "rmse": rmse,
-        "butterfly_ok": ssvi_butterfly_ok(np.unique(theta), rho, eta, gamma),
+        "butterfly_ok": ssvi_butterfly_ok(theta_u, rho, eta, gamma),
     }
