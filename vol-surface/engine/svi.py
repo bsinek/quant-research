@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from scipy.optimize import minimize
 
 def svi_w(k, a, b, rho, m, sigma) -> np.ndarray:
@@ -42,3 +43,27 @@ def fit_slice(k, w, weights=None):
     rho = c / b
     rmse = np.sqrt(np.mean((svi_w(k, a, b, rho, m, sigma) - w)**2))
     return a, b, rho, m, sigma, rmse
+
+
+def fit_surface(df, weight_col=None, min_quotes=10):
+    """Fit raw SVI to every expiry in ``df`` with at least ``min_quotes`` rows.
+
+    ``df`` needs columns: expiry, T, k (log-moneyness), w (total variance), and
+    ``weight_col`` if given. Every expiry gets a row; those with fewer than
+    ``min_quotes`` rows are left unfitted (NaN params) so skips stay visible and
+    plottable. Sorted by expiry, so T increases down the frame.
+
+    Columns: expiry, T, n_quotes, a, b, rho, m, sigma, rmse.
+    """
+    rows = []
+    for expiry, g in df.groupby("expiry"):
+        if len(g) >= min_quotes:
+            weights = g[weight_col].to_numpy() if weight_col else None
+            a, b, rho, m, sigma, rmse = fit_slice(g["k"].to_numpy(), g["w"].to_numpy(), weights)
+        else:
+            a = b = rho = m = sigma = rmse = np.nan
+        rows.append({
+            "expiry": expiry, "T": g["T"].iloc[0], "n_quotes": len(g),
+            "a": a, "b": b, "rho": rho, "m": m, "sigma": sigma, "rmse": rmse,
+        })
+    return pd.DataFrame(rows)
