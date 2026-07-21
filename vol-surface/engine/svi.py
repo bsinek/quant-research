@@ -13,6 +13,23 @@ def svi_w(k, a, b, rho, m, sigma) -> np.ndarray:
     return a + b * (rho * (k - m) + np.sqrt((k - m)**2 + sigma**2))
 
 
+def svi_g(k, a, b, rho, m, sigma) -> np.ndarray:
+    """Gatheral-Jacquier g(k) for one SVI slice; butterfly-arb-free iff g(k) >= 0 for all k.
+
+    g = (1 - k*w'/(2w))**2 - (w'**2/4)*(1/w + 1/4) + w''/2, where w, w', w'' are the SVI
+    total variance and its first two k-derivatives (all analytic). A negative g(k) means a
+    negative implied density there. Ref: Gatheral & Jacquier, arXiv:1204.0646, Lemma 2.2.
+    Vectorized over k.
+    """
+    k = np.asarray(k, dtype=float)
+    u = k - m
+    root = np.sqrt(u**2 + sigma**2)
+    w = a + b * (rho * u + root)
+    w1 = b * (rho + u / root)                       # dw/dk
+    w2 = b * sigma**2 / root**3                     # d2w/dk2
+    return (1 - k * w1 / (2 * w))**2 - (w1**2 / 4) * (1 / w + 0.25) + w2 / 2
+
+
 def fit_slice(k, w, weights=None):
     """Fit raw SVI to one expiry; returns (a, b, rho, m, sigma, rmse).
 
