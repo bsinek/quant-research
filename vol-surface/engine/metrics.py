@@ -40,8 +40,28 @@ def surface_metrics(fit: pd.DataFrame) -> pd.DataFrame:
     for tag, col in [("k_25c", "iv_25c"), ("k_25p", "iv_25p")]:
         out[col] = np.sqrt(svi_w(out[tag], out["a"], out["b"], out["rho"],
                                  out["m"], out["sigma"]) / out["T"])
-    out["skew_25d"] = out["iv_25p"] - out["iv_25c"]
+    out["skew_25d"] = out["iv_25p"] - out["iv_25c"]                       # risk reversal (tilt)
+    out["fly_25d"] = (out["iv_25c"] + out["iv_25p"]) / 2 - out["atm_vol"]  # butterfly (curvature)
     return out
+
+
+def forward_vol(fit: pd.DataFrame) -> pd.DataFrame:
+    """Forward vol between adjacent expiries from the ATM total-variance term structure.
+
+    Forward variance over [T_i, T_{i+1}] = (theta_{i+1} - theta_i) / (T_{i+1} - T_i); its
+    sqrt is the vol the market prices for that *future* window. Spot (implied) vol averages
+    from now to each expiry, smearing events; forward vol isolates them — a window whose
+    forward vol spikes above its neighbours is pricing a scheduled event (Fed, CPI, ...).
+    Needs theta (ATM total variance) per expiry. Columns: expiry_from, expiry_to, T_mid, fwd_vol.
+    """
+    f = fit.dropna(subset=["theta"]).sort_values("T")
+    T, th, exp = f["T"].to_numpy(), f["theta"].to_numpy(), f["expiry"].to_numpy()
+    fwd_var = np.diff(th) / np.diff(T)
+    return pd.DataFrame({
+        "expiry_from": exp[:-1], "expiry_to": exp[1:],
+        "T_mid": (T[:-1] + T[1:]) / 2,
+        "fwd_vol": np.sqrt(np.maximum(fwd_var, 0.0)),
+    })
 
 
 def butterfly_free_fraction(fit: pd.DataFrame, quotes: pd.DataFrame) -> float:

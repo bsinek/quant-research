@@ -44,9 +44,11 @@ _Each major unit and its single responsibility._
 - **`ssvi.py`** — global SSVI surface. `ssvi_w` (power-law `φ(θ)=η θ^{-γ}`), `fit_ssvi` (one
   `(ρ, η, γ)` fit under GJ Thm 4.2 butterfly constraints → arb-free by construction),
   `atm_theta` (θ_T term structure from the raw-SVI ATM). ADR 013.
-- **`metrics.py`** — read-outs off the fitted surface: `surface_metrics` (ATM vol, 25-delta
-  skew per expiry) and `butterfly_free_fraction`. Needs the fit — the 25-delta strike is
-  rarely listed, so it's read off the curve.
+- **`metrics.py`** — read-outs off the fitted surface: `surface_metrics` (the three standard
+  quotes — ATM vol, 25-delta skew/risk-reversal, 25-delta fly/curvature — per expiry),
+  `forward_vol` (vol of the future window between adjacent expiries; an event radar) and
+  `butterfly_free_fraction`. Needs the fit — the 25-delta strike is rarely listed, so it's
+  read off the curve.
 
 ## Data / interfaces
 _Key data models and the durable interface surface._
