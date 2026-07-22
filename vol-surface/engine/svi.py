@@ -70,17 +70,28 @@ def fit_surface(df, weight_col=None, min_quotes=10):
     ``min_quotes`` rows are left unfitted (NaN params) so skips stay visible and
     plottable. Sorted by expiry, so T increases down the frame.
 
-    Columns: expiry, T, n_quotes, a, b, rho, m, sigma, rmse.
+    ``rmse`` is the fit error in total-variance (w) space — tiny and unit-bound, a
+    relative quality flag only. ``rmse_vol`` re-expresses it in vol points
+    (convert each side to IV = √(w/T) first, then difference): the interpretable,
+    citable number.
+
+    Columns: expiry, T, n_quotes, a, b, rho, m, sigma, rmse, rmse_vol.
     """
     rows = []
     for expiry, g in df.groupby("expiry"):
+        T = g["T"].iloc[0]
         if len(g) >= min_quotes:
+            k, w = g["k"].to_numpy(), g["w"].to_numpy()
             weights = g[weight_col].to_numpy() if weight_col else None
-            a, b, rho, m, sigma, rmse = fit_slice(g["k"].to_numpy(), g["w"].to_numpy(), weights)
+            a, b, rho, m, sigma, rmse = fit_slice(k, w, weights)
+            iv_fit = np.sqrt(np.maximum(svi_w(k, a, b, rho, m, sigma), 0) / T)
+            iv_mkt = np.sqrt(np.maximum(w, 0) / T)
+            rmse_vol = np.sqrt(np.mean((iv_fit - iv_mkt)**2))
         else:
-            a = b = rho = m = sigma = rmse = np.nan
+            a = b = rho = m = sigma = rmse = rmse_vol = np.nan
         rows.append({
-            "expiry": expiry, "T": g["T"].iloc[0], "n_quotes": len(g),
-            "a": a, "b": b, "rho": rho, "m": m, "sigma": sigma, "rmse": rmse,
+            "expiry": expiry, "T": T, "n_quotes": len(g),
+            "a": a, "b": b, "rho": rho, "m": m, "sigma": sigma,
+            "rmse": rmse, "rmse_vol": rmse_vol,
         })
     return pd.DataFrame(rows)
