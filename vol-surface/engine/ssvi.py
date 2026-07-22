@@ -78,7 +78,9 @@ def fit_ssvi(df, weight_col=None) -> dict:
         phi = eta * theta_u**(-gamma)
         c1 = theta_u * phi * (1 + abs(rho))          # need < 4
         c2 = theta_u * phi**2 * (1 + abs(rho))       # need <= 4
-        return np.min(np.concatenate([4 - 1e-4 - c1, 4 - c2]))
+        # keep a 1e-4 margin on BOTH so SLSQP can't land exactly on the boundary and drift
+        # microscopically over (floating-point), which would fail the strict post-fit check
+        return np.min(np.concatenate([4 - 1e-4 - c1, 4 - 1e-4 - c2]))
 
     res = minimize(
         objective, x0=[-0.5, 1.0, 0.5], method="SLSQP",

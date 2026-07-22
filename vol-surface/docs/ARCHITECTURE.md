@@ -30,11 +30,12 @@ _Each major unit and its single responsibility._
   composes with `&`). v1 defaults: `bidask_mask` + `expiry_mask`. Available but off by default:
   `staleness_mask`, `volume_mask` (ADR 008/009). Cleaning only — never modifies a row.
 - **`surface.py`** — *construction*, not cleaning: derives each expiry's forward `F` from
-  put-call parity (`forward_by_expiry`), then uses it to pick the reliable OTM side
-  (`select_otm`) and place the `ln(K/F)` moneyness axis. Depends on the modeled forward, so it
-  runs **after** the quote filters (the forward is computed from the surviving set).
+  put-call parity (`forward_by_expiry`), uses it to pick the reliable OTM side (`select_otm`)
+  and place the `ln(K/F)` moneyness axis, and collapses each expiry to one root (`blend_roots`:
+  SPXW ≤60d, richest beyond; ADR 015). Depends on the modeled forward, so it runs **after** the
+  quote filters (the forward is computed from the surviving set).
 - **`blackscholes.py`** — Black-76 pricing off the parity forward. `bs_price` maps σ → price;
-  `implied_vol` inverts price → σ numerically (vectorized bisection); `bs_vega` = ∂price/∂σ
+  `implied_vol` inverts price → σ numerically (safeguarded Newton–bisection); `bs_vega` = ∂price/∂σ
   (fit weights + a future Newton solver). CBOE's `iv` is the validation oracle, never an input
   (ADR 010).
 - **`svi.py`** — raw SVI per expiry in total-variance space. `svi_w` (the parameterization),
